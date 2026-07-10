@@ -23,13 +23,15 @@ One Postgres archive is the shared foundation. Each project is a separately
 bounded codebase that reads or writes it through a narrow contract:
 
 ```
-Postgres archive  ──►  taste-search (this repo)   read-only product API
+Postgres archive  ──►  taste-search (this repo)   FastAPI + React product
                   ──►  admin tool (separate repo)  back-of-house classify UI
 ```
 
-This repo is a standalone FastAPI service. It does **not** import the admin
-tool's code and it never writes — it talks to the archive through one query.
-The product surface and the internal tool evolve independently.
+This repo is one bounded project: a FastAPI backend (`app/`) and a React
+frontend (`frontend/`) that make up the taste-search product. It does **not**
+import the admin tool's code and it never writes — it reads the archive through
+one query contract. The product surface and the internal tool evolve
+independently, on the same shared database.
 
 ## Data model (the part that matters)
 
@@ -107,12 +109,33 @@ are fine. What breaks first, and the fix:
 The through-line: the boundaries are already drawn so each of these is a local
 change — the API contract doesn't move when the storage or read path does.
 
+## Frontend
+
+`frontend/` — Vite + React + **TypeScript**. The TS interfaces in `api.ts`
+mirror the backend's Pydantic `Piece` model, which mirrors the Postgres schema:
+one typed contract from database → API → UI, so a contract change surfaces at
+compile time. Components are bounded — `PieceCard` owns how a piece presents,
+`App` owns filter state and fetching. The API base URL is config
+(`VITE_API_URL`), not hardcoded. CORS is permissive on the API by deliberate
+choice (public, read-only).
+
+The UI renders the active filters as a live pseudo-SQL line
+(`SELECT * FROM archive WHERE …`) — the interface *is* the query, which is the
+whole thesis.
+
 ## Run locally
 
+Backend:
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 # .env with DATABASE_URL=postgresql://...
-.venv/bin/uvicorn app.main:app --reload
-# http://127.0.0.1:8000/docs
+.venv/bin/uvicorn app.main:app --reload   # http://127.0.0.1:8000/docs
+```
+
+Frontend (separate terminal):
+```bash
+cd frontend
+npm install
+npm run dev                                # http://localhost:5173
 ```

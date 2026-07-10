@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from typing import Literal
 
 from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 
 from .db import pool
 from .models import PiecesResponse
@@ -23,6 +24,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Taste Search", version="0.2.0", lifespan=lifespan)
+
+# Decision: this is a public, read-only API over public data, so CORS is
+# permissive. If it ever served private data or accepted writes, I'd restrict
+# allow_origins to the known frontend origins — the permissiveness is a
+# deliberate consequence of the read-only-public contract, not an oversight.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
 
 
 # survives_trend is COALESCE(manual override, derived-from-trend) — computed, not
