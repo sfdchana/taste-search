@@ -55,13 +55,22 @@ mirrors the schema-first data model, and auto-generated interactive docs at
 `/docs` (an interviewer can query the taste engine themselves).
 
 - `GET /health` → liveness
-- `GET /pieces?role=&magnitude=&survives_trend=&limit=` → matching pieces
+- `GET /pieces?role=&magnitude=&survives_trend=&era=&vibe=&limit=` → matching pieces
 
 Filters compose dynamically from a **whitelist of columns**; every value is a
-bound parameter, so the endpoint is injection-safe by construction.
+bound parameter, so the endpoint is injection-safe by construction. Each piece
+also returns its `vibes` (a many-to-many via the `item_vibes` junction), fetched
+with a correlated `array_agg` subquery so results don't fan out.
 
 ### Design decisions
 
+- **Typed request + response contract** — filter params use `Literal` types that
+  mirror the DB's CHECK constraints (`role ∈ {anchor,statement,connector}`,
+  `magnitude ∈ {low,moderate,high}`), so invalid input is rejected with a 422
+  *before* a query runs, and `/docs` renders them as dropdowns. The response is a
+  Pydantic `Piece` model, kept separate from the query — the SQL can change
+  without changing the public contract. The contract is enforced at both the API
+  and the database layer.
 - **Connection pool, not per-request connections** — a small warm pool
   (`min=1,max=5`); this is a read-only surface, not write-heavy.
 - **Raw parameterized SQL, no ORM** — the schema is stable and hand-designed;
@@ -75,9 +84,28 @@ bound parameter, so the endpoint is injection-safe by construction.
 
 ## What I'd change at 10x scale
 
-_(to write: pagination beyond LIMIT, indexes on the filtered columns, caching
-the derived `survives_trend`, read replica, moving the taste derivation into a
-materialized view.)_
+Today the archive is small enough that a bare `LIMIT` and per-request queries
+are fine. What breaks first, and the fix:
+
+- **Pagination.** `LIMIT 500` doesn't scale to a large archive or a scrolling UI.
+  Move to keyset (cursor) pagination on `(created_at, id)` — stable under inserts
+  and index-friendly, unlike `OFFSET`.
+- **Indexes on the filtered columns.** `role`, `era`, and `tension.magnitude`
+  want btree indexes; the `vibe` `EXISTS` wants an index on
+  `item_vibes(vibe_id, item_id)`. Right now these are sequential scans — invisible
+  at this size, not at 100k rows.
+- **The derived `survives_trend` is recomputed every query.** At scale I'd
+  materialize it — a materialized view (or a maintained column invalidated when a
+  `trends` row changes) — so the read path is a lookup, not a 3-table walk. The
+  tradeoff is staleness vs. read cost; for a taste signal that changes rarely,
+  materialize and refresh on write.
+- **Read replica.** A public read-only search surface should hit a replica, not
+  the primary the admin tool writes to — isolates product traffic from ingestion.
+- **Caching.** Filter combinations are low-cardinality and repeat; a short-TTL
+  cache in front of `/pieces` would absorb most of the load.
+
+The through-line: the boundaries are already drawn so each of these is a local
+change — the API contract doesn't move when the storage or read path does.
 
 ## Run locally
 
