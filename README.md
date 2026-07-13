@@ -5,6 +5,15 @@ attributes** — the role a piece plays in an outfit, the magnitude of its
 tension, whether it outlasts a trend — instead of neutral keywords like color
 and size.
 
+## Live
+
+- **App:** https://sfdchana.github.io/taste-search/
+- **API (interactive docs):** https://taste-search-api-production.up.railway.app/docs
+- **Example query:** [`/pieces?role=anchor&survives_trend=true`](https://taste-search-api-production.up.railway.app/pieces?role=anchor&survives_trend=true)
+
+React + TypeScript frontend on GitHub Pages, FastAPI backend on Railway, both
+reading a shared Postgres archive.
+
 > Status: in progress. v1 = filter the existing archive by a few schema
 > attributes, rendered and live. This README is written as a design doc and
 > grows with the project.
